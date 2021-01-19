@@ -169,8 +169,8 @@ type customAttr struct {
 
 /*****************************************************************************************/
 
-// GetRequestPayload returns a RequestData struture which specifies data being requested by an http request.
-// The data is used as the body of an http.Request structure.
+// GetRequestPayload returns a RequestPayload object which identifies specific data. The fields of the
+// RequestPayload object are encoded into JSON and sent as the paylaod of an http post request.
 func GetRequestPayload(productLine string, productType string, setName string, resultSize int) *RequestPayload {
 	var requestData RequestPayload
 
@@ -197,7 +197,9 @@ func GetRequestPayload(productLine string, productType string, setName string, r
 	return &requestData
 }
 
-// MakeDataRequest
+// MakeDataRequest is meant to be executed as a goroutine. It receives RequestPayload objects through the
+// the channel passed in the requestChan parameter, makes the request and passes the response to another
+// goroutine, through the channel passed in the dataChan parameter to, which processes the data.
 func MakeDataRequest(requestChan chan *RequestPayload, dataChan chan []CardAttrs) {
 	var ri *RequestPayload
 	var rd *ResponsePayload
@@ -223,8 +225,7 @@ func MakeDataRequest(requestChan chan *RequestPayload, dataChan chan []CardAttrs
 	}
 }
 
-// tcgPlayerHTTPRequest creates a new http.Request object and initializes its fields
-// with information specifying the data being requested.
+// tcgPlayerHTTPRequest returns an http.Request
 func tcgPlayerHTTPRequest(method string, url string, body string) *http.Request {
 	request, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
