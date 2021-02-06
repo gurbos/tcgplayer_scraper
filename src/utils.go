@@ -185,16 +185,17 @@ func WriteProductLineInfo(db *gorm.DB, data Result) *gorm.DB {
 
 func MakeSetMap(dbConn *gorm.DB, productLine string) (map[string]SetInfo, error) {
 	var productLineID ProductLineID
-	tx := dbConn.Model(ProductLineID{}).Where("name = ?", productLine).Find(&productLineID)
+	tx := dbConn.Model(ProductLine{}).Where("name = ?", productLine).Find(&productLineID)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 	var setCount int64
-	tx = dbConn.Model(SetInfo{}).Where("id = ?", productLineID.ID).Count(&setCount)
+	tx = dbConn.Model(SetInfo{}).Where("product_line_id = ?", productLineID.ID).Count(&setCount)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 	setInfoList := make([]SetInfo, setCount, setCount)
+	tx = dbConn.Model(SetInfo{}).Where("product_line_id = ?", productLineID.ID).Find(&setInfoList)
 	setMap := make(map[string]SetInfo)
 	for _, elem := range setInfoList {
 		setMap[elem.Name] = elem
