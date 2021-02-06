@@ -30,7 +30,7 @@ func TestWriteProductLine(t *testing.T) {
 			break
 		}
 	}
-	WriteProductLine(db, responseData.Results[0].Aggregations)
+	WriteProductLineInfo(db, responseData.Results[0])
 	var entryCount int64
 	db.Model(&ProductLine{}).Count(&entryCount)
 	if entryCount != 1 {

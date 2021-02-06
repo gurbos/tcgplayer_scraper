@@ -49,7 +49,7 @@ func main() {
 		break
 	}
 
-	tx := WriteProductLine(dbConn, response.Results[0].Aggregations)
+	tx := WriteProductLineInfo(dbConn, response.Results[0])
 	if tx.Error != nil {
 		DropTables(dbConn)
 		log.Fatal(tx.Error)

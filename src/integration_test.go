@@ -36,7 +36,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	// Write product line data to database
-	tx := WriteProductLine(dbconn, responseData.Results[0].Aggregations)
+	tx := WriteProductLineInfo(dbconn, responseData.Results[0])
 	if tx.Error != nil {
 		t.Fatal("WriteProductLine():", tx.Error)
 	}
