@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -92,17 +91,6 @@ func (rd *RequestPayload) DecodeJSON(js string) error {
 
 /*****************************************************************************************/
 
-// TcgpError represents the errors returned by functions in the tcgp_scraper package.
-type TcgpError struct {
-	ErrorType   uint16
-	ErrorCode   uint16
-	ErrorString string
-}
-
-func (te *TcgpError) Error() string {
-	return te.ErrorString
-}
-
 // ResponsePayload a structure used to hold values of a the decoded
 // json string returned by a request to TcgPlayerDataURL.
 type ResponsePayload struct {
@@ -173,6 +161,24 @@ type customAttr struct {
 
 /*****************************************************************************************/
 
+// Constants specifying error types.
+const (
+	ErrorHTTP = 100 // Indicates an HTTP error
+	ErrorLib  = 101
+)
+
+// TcgpError represents the errors returned by functions in the tcgp_scraper package.
+type TcgpError struct {
+	ErrorType int
+	ErrorCode int // Depends on ErrorType
+	ErrorMsg  string
+}
+
+// Error() implements the golang error interface.
+func (te *TcgpError) Error() string {
+	return te.ErrorMsg
+}
+
 // GetRequestPayload returns a RequestPayload object which identifies specific data. The fields of the
 // RequestPayload object are encoded into JSON and sent as the paylaod of an http post request.
 func GetRequestPayload(productLine string, productType string, setName string, resultSize int) *RequestPayload {
@@ -225,32 +231,32 @@ func tcgPlayerHTTPRequest(method string, url string, body string) *http.Request 
 	return request
 }
 
-func MakeTcgPlayerRequest(requestBody string, timeout int) (*ResponsePayload, error) {
+func MakeTcgPlayerRequest(requestBody string, timeout int) (*ResponsePayload, *TcgpError) {
 	request := tcgPlayerHTTPRequest(http.MethodPost, TcgPlayerDataURL, requestBody)
 	client := http.Client{Timeout: time.Duration(timeout) * time.Second}
 
 	// Make http request and receive rescponse
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, err
+		return nil, &TcgpError{ErrorType: ErrorLib, ErrorCode: 0, ErrorMsg: err.Error()}
 	}
 	defer response.Body.Close()
 
 	// Check http status codes for errors
 	if response.StatusCode >= 300 {
-		return nil, errors.New("HTTP Status: " + response.Status)
+		return nil, &TcgpError{ErrorType: ErrorHTTP, ErrorCode: response.StatusCode, ErrorMsg: response.Status}
 	}
 
 	// Read json response body into buffer
 	buff, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, err
+		return nil, &TcgpError{ErrorType: ErrorLib, ErrorCode: 0, ErrorMsg: err.Error()}
 	}
 
 	var payload ResponsePayload
 	err = json.Unmarshal(buff, &payload) // Decode json buffer into ResponsePayload structure
 	if err != nil {
-		return nil, err
+		return nil, &TcgpError{ErrorType: ErrorLib, ErrorCode: 0, ErrorMsg: err.Error()}
 	}
 	return &payload, nil
 }
