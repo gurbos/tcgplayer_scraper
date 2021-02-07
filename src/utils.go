@@ -113,20 +113,6 @@ func deleteTableRecords(db *gorm.DB) {
 	}
 }
 
-// GetTestDataSource returns a DataSourceName object that specifies
-// the data source used during testing.
-func GetTestDataSource() DataSourceName {
-	godotenv.Load("/home/gurbos/Projects/golang/scraper/.env")
-	dataSource := DataSourceName{
-		Host:     os.Getenv("TEST_HOST"),
-		Port:     os.Getenv("TEST_PORT"),
-		User:     os.Getenv("TEST_USER"),
-		Password: os.Getenv("TEST_PASSWD"),
-		Database: os.Getenv("TEST_DB"),
-	}
-	return dataSource
-}
-
 // GetDataSource returns a DataSourceName object with that specifies
 // the data source used during production.
 func GetDataSource() DataSourceName {

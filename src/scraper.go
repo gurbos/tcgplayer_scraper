@@ -28,7 +28,7 @@ func main() {
 	numCPUThreads := runtime.NumCPU() * 2 // Get number of logical processors
 	runtime.GOMAXPROCS(numCPUThreads)     // Set max number of logical processors that can execute in parallel
 
-	dataSource := GetTestDataSource()
+	dataSource := GetDataSource()
 	dbConn := GetDBConnection(dataSource.DSNString(), logger.Silent)
 	Migrate(dataSource.DSNString(), &ProductLine{}, &SetInfo{}, &CardInfo{})
 	err := DatabaseConnConfig(dbConn, 10, 10)
