@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	tcm "github.com/gurbos/tcmodels"
 	"gorm.io/gorm/logger"
 )
 
@@ -14,8 +15,8 @@ import (
 func TestIntegration(t *testing.T) {
 
 	// Create database tables
-	dataSource := GetTestDataSource()
-	Migrate(dataSource.DSNString(), &ProductLine{}, &SetInfo{}, &CardInfo{}) // Create database tables
+	dataSource := GetDataSource()
+	Migrate(dataSource.DSNString(), &tcm.ProductLine{}, &tcm.SetInfo{}, &tcm.CardInfo{}) // Create database tables
 
 	dbconn := GetDBConnection(dataSource.DSNString(), logger.Silent)
 	err := DatabaseConnConfig(dbconn, 10, 10) // Configure the number of open database connections and idle connections

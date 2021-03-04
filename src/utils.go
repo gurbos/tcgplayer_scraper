@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	tcm "github.com/gurbos/tcmodels"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -93,19 +94,19 @@ func DropTables(db *gorm.DB) {
 
 func deleteTableRecords(db *gorm.DB) {
 	gen, err := db.DB()
-	if db.Migrator().HasTable(&CardInfo{}) {
+	if db.Migrator().HasTable(&tcm.CardInfo{}) {
 		_, err = gen.Exec("DELETE FROM card_infos;")
 		if err != nil {
 			log.Println(err)
 		}
 	}
-	if db.Migrator().HasTable(&SetInfo{}) {
+	if db.Migrator().HasTable(&tcm.SetInfo{}) {
 		_, err = gen.Exec("DELETE FROM set_infos;")
 		if err != nil {
 			log.Println(err)
 		}
 	}
-	if db.Migrator().HasTable(&ProductLine{}) {
+	if db.Migrator().HasTable(&tcm.ProductLine{}) {
 		_, err = gen.Exec("DELETE FROM product_lines;")
 		if err != nil {
 			log.Println(err)
@@ -116,7 +117,7 @@ func deleteTableRecords(db *gorm.DB) {
 // GetDataSource returns a DataSourceName object with that specifies
 // the data source used during production.
 func GetDataSource() DataSourceName {
-	godotenv.Load("/home/gurbos/Projects/golang/tcgplayer_scraper/.env")
+	godotenv.Load("/home/gurbos/Projects/golang/scraper/.env")
 	dataSource := DataSourceName{
 		Host:     os.Getenv("DB_HOST"),
 		Port:     os.Getenv("DB_PORT"),
@@ -156,9 +157,9 @@ func WriteProductLineInfo(db *gorm.DB, data Result) *gorm.DB {
 	var tx *gorm.DB
 	for _, elem := range data.Aggregations.ProductLineName {
 		if elem.IsActive {
-			productLine := ProductLine{
-				Title:     elem.Value,
-				Name:      elem.URLValue,
+			productLine := tcm.ProductLine{
+				Name:      elem.Value,
+				URLName:   elem.URLValue,
 				SetCount:  uint(len(data.Aggregations.SetName)),
 				CardCount: uint(data.TotalResults),
 			}
@@ -169,20 +170,20 @@ func WriteProductLineInfo(db *gorm.DB, data Result) *gorm.DB {
 	return tx
 }
 
-func MakeSetMap(dbConn *gorm.DB, productLine string) (map[string]SetInfo, error) {
+func MakeSetMap(dbConn *gorm.DB, productLine string) (map[string]tcm.SetInfo, error) {
 	var productLineID ProductLineID
-	tx := dbConn.Model(ProductLine{}).Where("name = ?", productLine).Find(&productLineID)
+	tx := dbConn.Model(tcm.ProductLine{}).Where("name = ?", productLine).Find(&productLineID)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 	var setCount int64
-	tx = dbConn.Model(SetInfo{}).Where("product_line_id = ?", productLineID.ID).Count(&setCount)
+	tx = dbConn.Model(tcm.SetInfo{}).Where("product_line_id = ?", productLineID.ID).Count(&setCount)
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
-	setInfoList := make([]SetInfo, setCount, setCount)
-	tx = dbConn.Model(SetInfo{}).Where("product_line_id = ?", productLineID.ID).Find(&setInfoList)
-	setMap := make(map[string]SetInfo)
+	setInfoList := make([]tcm.SetInfo, setCount, setCount)
+	tx = dbConn.Model(tcm.SetInfo{}).Where("product_line_id = ?", productLineID.ID).Find(&setInfoList)
+	setMap := make(map[string]tcm.SetInfo)
 	for _, elem := range setInfoList {
 		setMap[elem.Name] = elem
 	}
@@ -199,7 +200,7 @@ func WriteSetInfo(db *gorm.DB, data aggregation, batchWriteSize int) (tx *gorm.D
 	for _, val := range data.ProductLineName {
 		if val.IsActive {
 			productLineName = val.Value
-			tx = db.Model(&ProductLine{}).Where("Name = (?)", productLineName).First(&productLineID)
+			tx = db.Model(&tcm.ProductLine{}).Where("Name = (?)", productLineName).First(&productLineID)
 			if tx.Error != nil {
 				return
 			}
@@ -218,20 +219,19 @@ func WriteSetInfo(db *gorm.DB, data aggregation, batchWriteSize int) (tx *gorm.D
 func MakeDataRequest(requestChan chan *RequestPayload, dataChan chan []CardAttrs) {
 	var ri *RequestPayload
 	var rd *ResponsePayload
-	var err error
+	var tcgpErr *TcgpError
 	for true {
 		ri = <-requestChan
 		if ri != nil {
 			for true {
-				rd, err = MakeTcgPlayerRequest(ri.ToJSON(), 50)
-				if err != nil {
+				rd, tcgpErr = MakeTcgPlayerRequest(ri.ToJSON(), 50)
+				if tcgpErr != nil {
 					continue
 				}
 				break
 			}
 			if rd.Results[0].TotalResults != 0 {
 				dataChan <- rd.Results[0].Results
-				fmt.Printf("%-60s  %d\n", ri.Filters.Term.SetName[0], ri.Size)
 			}
 			continue
 		}
@@ -240,8 +240,8 @@ func MakeDataRequest(requestChan chan *RequestPayload, dataChan chan []CardAttrs
 	}
 }
 
-// WriteCardInfo reads card info data from a channel and inserts it into the card info database table.
-func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, setMap map[string]SetInfo, batchWriteSize int) {
+// WriteCardInfo reads card info data from a channel and writes it to the corresponding database table.
+func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, setMap map[string]tcm.SetInfo, batchWriteSize int) {
 	defer wg.Done()
 
 	for true {
@@ -252,7 +252,7 @@ func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, s
 				log.Fatal(err)
 			}
 			for true {
-				tx := db.Create(cardInfoList) // db.CreateInBatches(cardInfoList, batchWriteSize)
+				tx := db.Create(&cardInfoList) // db.CreateInBatches(cardInfoList, batchWriteSize)
 				if tx.Error != nil {
 					fmt.Println(tx.Error)
 					if strings.Index(tx.Error.Error(), "Duplicate entry") != -1 {
@@ -261,8 +261,14 @@ func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, s
 						continue
 					}
 				}
-				break // Break if no database error
+				productIDList, _ := makeCardImageIDList(data, cardInfoList)
+				tx = db.Create(productIDList)
+				if tx.Error != nil {
+					log.Fatal(tx.Error)
+				}
+				break // Break if no database write error
 			}
+			fmt.Printf("%-60s  %d\n", data[0].SetName, len(cardInfoList))
 			continue // Retry database write after error handling
 		}
 		break
@@ -273,13 +279,13 @@ func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, s
 // open database conntection handle used to get foreign key information from corresponding
 // tables and, together with the data passed in the attr parameter, is used to Write the
 // fields of the SetInfo structures in the returned list.
-func makeSetInfoList(productLineID uint, data []itemInfo) []SetInfo {
+func makeSetInfoList(productLineID uint, data []itemInfo) []tcm.SetInfo {
 	length := len(data)
-	list := make([]SetInfo, length, length)
+	list := make([]tcm.SetInfo, length, length)
 	for i := 0; i < length; i++ {
-		list[i].Title = data[i].Value
-		list[i].Name = data[i].URLValue
-		list[i].Count = uint16(data[i].Count)
+		list[i].Name = data[i].Value
+		list[i].URLName = data[i].URLValue
+		list[i].CardCount = uint(data[i].Count)
 		list[i].ProductLineID = productLineID
 	}
 	return list
@@ -289,8 +295,8 @@ func makeSetInfoList(productLineID uint, data []itemInfo) []SetInfo {
 // open database connection handle used to get foreign ey information from corresponding
 // tables and, together with the data passed in the attr parameter, is used to Write the
 // fields of the CardInfo structures in the returned list.
-func makeCardInfoList(attr []CardAttrs, setMap map[string]SetInfo) ([]CardInfo, error) {
-	cardInfo := make([]CardInfo, len(attr))
+func makeCardInfoList(attr []CardAttrs, setMap map[string]tcm.SetInfo) ([]tcm.CardInfo, error) {
+	cardInfo := make([]tcm.CardInfo, len(attr))
 	for i := 0; i < len(attr); i++ {
 		cardInfo[i].Attack = attr[i].CustomAttributes.Attack
 
@@ -317,13 +323,25 @@ func makeCardInfoList(attr []CardAttrs, setMap map[string]SetInfo) ([]CardInfo, 
 		cardInfo[i].MonsterType = strings.TrimSpace(temp)
 
 		cardInfo[i].Name = attr[i].ProductName
+		cardInfo[i].URLName = attr[i].ProductURLName
 		cardInfo[i].Number = attr[i].CustomAttributes.Number
 		cardInfo[i].Rarity = attr[i].RarityName
 		cardInfo[i].SetID = setMap[attr[i].SetName].ID                    // Set set infoforeign key
 		cardInfo[i].ProductLineID = setMap[attr[i].SetName].ProductLineID // Set product line foreign key
-		cardInfo[i].ProductID = uint(attr[i].ProductID)                   // Used to identify associated card image
 	}
 	return cardInfo, nil
+}
+
+func makeCardImageIDList(attrList []CardAttrs, cardInfoList []tcm.CardInfo) ([]CardImageID, error) {
+	var cardImageIds []CardImageID
+	if len(attrList) == len(cardInfoList) {
+		cardImageIds = make([]CardImageID, len(attrList))
+		for i := 0; i < len(cardImageIds); i++ {
+			cardImageIds[i].OldID = uint(attrList[i].ProductID)
+			cardImageIds[i].NewID = uint(cardInfoList[i].ID)
+		}
+	}
+	return cardImageIds, nil
 }
 
 func parseDuplicateValue(errstr string) []string {
@@ -335,7 +353,7 @@ func parseDuplicateValue(errstr string) []string {
 	return []string{keys[0] + "-" + keys[1], keys[2], keys[3], keys[4]}
 }
 
-func removeEntry(list []CardInfo, number string, name string, rarity string, setID string) []CardInfo {
+func removeEntry(list []tcm.CardInfo, number string, name string, rarity string, setID string) []tcm.CardInfo {
 	length := len(list)
 	temp, _ := strconv.Atoi(setID)
 	sID := uint(temp)
@@ -361,9 +379,9 @@ func GetImages(wg *sync.WaitGroup, dataChan chan []CardImageID) {
 		data := <-dataChan
 		if data != nil {
 			for i := 0; i < len(data); i++ {
-				remoteFileName = strconv.Itoa(int(data[i].ProductID)) + "_200w.jpg" // Create remote filename from cardInfo.ProductID
-				url = TcgPlayerImageURL + "/" + remoteFileName                      // Build filename url from resource domain and remote filename
-				request, err := http.NewRequest(http.MethodGet, url, nil)           // Create http request object
+				remoteFileName = strconv.Itoa(int(data[i].OldID)) + "_200w.jpg" // Create remote filename from cardInfo.ProductID
+				url = TcgPlayerImageURL + "/" + remoteFileName                  // Build filename url from resource domain and remote filename
+				request, err := http.NewRequest(http.MethodGet, url, nil)       // Create http request object
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -382,8 +400,8 @@ func GetImages(wg *sync.WaitGroup, dataChan chan []CardImageID) {
 				}
 				response.Body.Close()
 
-				path := path.Join(imgDir, strconv.Itoa(int(data[i].ID))+"_200w.jpg") // Card image file is named using the corresponding card id number
-				file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0755)        // Create image file
+				path := path.Join(imgDir, strconv.Itoa(int(data[i].NewID))+"_200w.jpg") // Card image file is named using the corresponding card id number
+				file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0755)           // Create image file
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -408,11 +426,4 @@ type ProductLineID struct {
 // SetInfoID used when only requesting SetInfo.ID field from corresponding database table.
 type SetInfoID struct {
 	ID uint
-}
-
-// CardImageID is used when only the ID and ProductID fields need to be retrieved
-// from the CardInfo database table. Used in the GetImages goroutine.
-type CardImageID struct {
-	ID        uint // Local image ID
-	ProductID uint // Remote image ID
 }
