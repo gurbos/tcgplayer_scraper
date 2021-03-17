@@ -317,7 +317,6 @@ func makeCardInfoList(attr []CardAttrs, setMap map[string]tcm.SetInfo) ([]tcm.Ca
 
 		// cardInfo[i].ID = uint(attr[i].ProductID)
 		cardInfo[i].Level = attr[i].CustomAttributes.Level
-		cardInfo[i].MarketPrice = attr[i].MarketPrice
 
 		temp := strings.Join(attr[i].CustomAttributes.MonsterType, ",")
 		cardInfo[i].MonsterType = strings.TrimSpace(temp)
