@@ -8,6 +8,8 @@ github.com/gurbos/tcmodels v1.2.2-beta h1:fx7YgYP/pzx2K0pdHpJZowX4gU1L5n82e4MCaN
 github.com/gurbos/tcmodels v1.2.2-beta/go.mod h1:Uc5nRhWVPv/vNTQihYGC0UOl2unHLDvwUPZbL4NtOuo=
 github.com/gurbos/tcmodels v1.3.2-beta h1:tmsE1OD68MX9JzXnirrS8vQg3XWU/OvW/VPpuWbUcok=
 github.com/gurbos/tcmodels v1.3.2-beta/go.mod h1:Uc5nRhWVPv/vNTQihYGC0UOl2unHLDvwUPZbL4NtOuo=
+github.com/gurbos/tcmodels v1.4.3-beta h1:W+kFNZyLV9sI4KW09FWM/7pk07Hf7GgFUY9lZuciCbQ=
+github.com/gurbos/tcmodels v1.4.3-beta/go.mod h1:Uc5nRhWVPv/vNTQihYGC0UOl2unHLDvwUPZbL4NtOuo=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.1 h1:g39TucaRWyV3dwDO++eEc6qf8TVIQ/Da48WmqjZ3i7E=

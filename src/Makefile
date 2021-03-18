@@ -8,3 +8,6 @@ clean :
 
 cleandb :
 	go test --run=TestCleanUp
+
+migrate: 
+	go test --run=TestMigrate

@@ -11,10 +11,10 @@ import (
 )
 
 // TcgPlayerDataURL is the base URL where card info can be located
-var TcgPlayerDataURL string = "https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false"
+var TcgpDataURL string = "https://mpapi.tcgplayer.com/v2/search/request?q=&isList=false"
 
 // TcgPlayerImageURL is the base URL where card images can be located
-var TcgPlayerImageURL string = "https://tcgplayer-cdn.tcgplayer.com/product"
+var TcgpImageURL string = "https://tcgplayer-cdn.tcgplayer.com/product"
 
 // MaxResultSetSize represends the maximum number of cards per result set
 var MaxResultSetSize int = 800
@@ -189,6 +189,7 @@ func GetRequestPayload(productLine string, productType string, setName string, r
 	requestData.Filters.Term.ProductTypeName = make([]string, 0, 0)
 	requestData.Filters.Term.SetName = make([]string, 0, 0)
 	requestData.From = 0
+	requestData.Size = resultSize
 
 	if productLine != "" {
 		requestData.Filters.Term.ProductLineName = append(requestData.Filters.Term.ProductLineName, strings.ToLower(productLine))
@@ -201,14 +202,13 @@ func GetRequestPayload(productLine string, productType string, setName string, r
 	}
 
 	requestData.Algorithm = ""
-	requestData.Size = resultSize
 	requestData.ListingSearch.Filters.Exclude.ChannelExclusion = 0
 	requestData.Context.ShippingCountry = "US"
 	return &requestData
 }
 
-// tcgPlayerHTTPRequest returns an http.Request
-func tcgPlayerHTTPRequest(method string, url string, body string) *http.Request {
+// tcgPlayerHTTPRequest
+func tcgpHTTPRequest(method string, url string, body string) *http.Request {
 	request, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		log.Fatal("initializedHTTPRequest() --> http.NewRequest(): " + err.Error())
@@ -232,7 +232,7 @@ func tcgPlayerHTTPRequest(method string, url string, body string) *http.Request 
 }
 
 func MakeTcgPlayerRequest(requestBody string, timeout int) (*ResponsePayload, *TcgpError) {
-	request := tcgPlayerHTTPRequest(http.MethodPost, TcgPlayerDataURL, requestBody)
+	request := tcgpHTTPRequest(http.MethodPost, TcgpDataURL, requestBody)
 	client := http.Client{Timeout: time.Duration(timeout) * time.Second}
 
 	// Make http request and receive rescponse

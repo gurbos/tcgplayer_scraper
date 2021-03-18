@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,7 +31,7 @@ type DataSourceName struct {
 
 // DSNString returns a data source identifier string
 func (dsn *DataSourceName) DSNString() string {
-	format := "%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local"
+	format := "%s:%s@tcp(%s:%s)/%s" //?charset=utf8mb4&parseTime=True&loc=Local"
 	return fmt.Sprintf(format, dsn.User, dsn.Password, dsn.Host, dsn.Port, dsn.Database)
 }
 
@@ -94,7 +95,7 @@ func DropTables(db *gorm.DB) {
 
 func deleteTableRecords(db *gorm.DB) {
 	gen, err := db.DB()
-	if db.Migrator().HasTable(&tcm.CardInfo{}) {
+	if db.Migrator().HasTable(&tcm.YuGiOhCardInfo{}) {
 		_, err = gen.Exec("DELETE FROM card_infos;")
 		if err != nil {
 			log.Println(err)
@@ -192,7 +193,7 @@ func MakeSetMap(dbConn *gorm.DB, productLine string) (map[string]tcm.SetInfo, er
 
 // WriteSetInfo writes the set info data passed into the data parameter and inserts
 // it into the set info database table.
-func WriteSetInfo(db *gorm.DB, data aggregation, batchWriteSize int) (tx *gorm.DB) {
+func WriteSetInfo(db *gorm.DB, data aggregation) (tx *gorm.DB) {
 	var productLineID ProductLineID
 	var productLineName string
 
@@ -209,7 +210,7 @@ func WriteSetInfo(db *gorm.DB, data aggregation, batchWriteSize int) (tx *gorm.D
 	}
 
 	setInfoList := makeSetInfoList(productLineID.ID, data.SetName)
-	tx = db.CreateInBatches(setInfoList, batchWriteSize)
+	tx = db.Create(setInfoList)
 	return
 }
 
@@ -241,7 +242,7 @@ func MakeDataRequest(requestChan chan *RequestPayload, dataChan chan []CardAttrs
 }
 
 // WriteCardInfo reads card info data from a channel and writes it to the corresponding database table.
-func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, setMap map[string]tcm.SetInfo, batchWriteSize int) {
+func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, setMap map[string]tcm.SetInfo) {
 	defer wg.Done()
 
 	for true {
@@ -252,12 +253,12 @@ func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, s
 				log.Fatal(err)
 			}
 			for true {
-				tx := db.Create(&cardInfoList) // db.CreateInBatches(cardInfoList, batchWriteSize)
+				tx := writeCardInfo(db, cardInfoList)
 				if tx.Error != nil {
 					fmt.Println(tx.Error)
 					if strings.Index(tx.Error.Error(), "Duplicate entry") != -1 {
-						keys := parseDuplicateValue(tx.Error.Error())
-						cardInfoList = removeEntry(cardInfoList, keys[0], keys[1], keys[2], keys[3])
+						// keys := parseDuplicateValue(tx.Error.Error())
+						// cardInfoList = removeEntry(cardInfoList, keys[0], keys[1], keys[2], keys[3])
 						continue
 					}
 				}
@@ -268,11 +269,20 @@ func WriteCardInfo(wg *sync.WaitGroup, dataChan chan []CardAttrs, db *gorm.DB, s
 				}
 				break // Break if no database write error
 			}
-			fmt.Printf("%-60s  %d\n", data[0].SetName, len(cardInfoList))
+			fmt.Printf("%-60s  %d\n", data[0].SetName, reflect.ValueOf(cardInfoList).Len())
 			continue // Retry database write after error handling
 		}
 		break
 	}
+}
+
+func writeCardInfo(dbconn *gorm.DB, cards interface{}) (tx *gorm.DB) {
+	switch cards.(type) {
+	case []tcm.YuGiOhCardInfo:
+		list := reflect.ValueOf(cards).Interface().([]tcm.YuGiOhCardInfo)
+		tx = dbconn.Create(&list)
+	}
+	return tx
 }
 
 // makeSetInfoList returns a list of SetInfo structures. The db parameter is a
@@ -295,52 +305,61 @@ func makeSetInfoList(productLineID uint, data []itemInfo) []tcm.SetInfo {
 // open database connection handle used to get foreign ey information from corresponding
 // tables and, together with the data passed in the attr parameter, is used to Write the
 // fields of the CardInfo structures in the returned list.
-func makeCardInfoList(attr []CardAttrs, setMap map[string]tcm.SetInfo) ([]tcm.CardInfo, error) {
-	cardInfo := make([]tcm.CardInfo, len(attr))
-	for i := 0; i < len(attr); i++ {
-		cardInfo[i].Attack = attr[i].CustomAttributes.Attack
+func makeCardInfoList(attr []CardAttrs, setMap map[string]tcm.SetInfo) (interface{}, error) {
+	var cardInfoList interface{}
+	switch attr[0].ProductLineURLName {
+	case "YuGiOh":
+		cardInfos := make([]tcm.YuGiOhCardInfo, len(attr))
+		for i := 0; i < len(attr); i++ {
+			cardInfos[i].Attack = attr[i].CustomAttributes.Attack
 
-		// attr[i].CustomAttributes.Attribute is a variable length list of strings
-		if len(attr[i].CustomAttributes.Attribute) == 0 {
-			cardInfo[i].Attribute = ""
-		} else {
-			cardInfo[i].Attribute = strings.Join(attr[i].CustomAttributes.Attribute, ",")
+			// attr[i].CustomAttributes.Attribute is a variable length list of strings
+			if len(attr[i].CustomAttributes.Attribute) == 0 {
+				cardInfos[i].Attribute = ""
+			} else {
+				cardInfos[i].Attribute = strings.Join(attr[i].CustomAttributes.Attribute, ",")
+			}
+
+			// attr[i].CustomAttributes.CardType is a variable length list of strings
+			cardInfos[i].CardType = strings.Join(attr[i].CustomAttributes.MonsterType, ",")
+
+			cardInfos[i].CardTypeB = attr[i].CustomAttributes.CardTypeB
+			cardInfos[i].Defense = attr[i].CustomAttributes.Defense
+			cardInfos[i].Description = strings.TrimSpace(attr[i].CustomAttributes.Description)
+			cardInfos[i].LinkArrows = strings.Join(attr[i].CustomAttributes.LinkArrows, ",")
+
+			// cardInfos[i].ID = uint(attr[i].ProductID)
+			cardInfos[i].Level = attr[i].CustomAttributes.Level
+
+			temp := strings.Join(attr[i].CustomAttributes.MonsterType, ",")
+			cardInfos[i].MonsterType = strings.TrimSpace(temp)
+
+			cardInfos[i].Name = attr[i].ProductName
+			cardInfos[i].URLName = attr[i].ProductURLName
+			cardInfos[i].Number = attr[i].CustomAttributes.Number
+			cardInfos[i].Rarity = attr[i].RarityName
+			cardInfos[i].SetID = setMap[attr[i].SetName].ID                    // Set set infoforeign key
+			cardInfos[i].ProductLineID = setMap[attr[i].SetName].ProductLineID // Set product line foreign key
 		}
-
-		// attr[i].CustomAttributes.CardType is a variable length list of strings
-		cardInfo[i].CardType = strings.Join(attr[i].CustomAttributes.MonsterType, ",")
-
-		cardInfo[i].CardTypeB = attr[i].CustomAttributes.CardTypeB
-		cardInfo[i].Defense = attr[i].CustomAttributes.Defense
-		cardInfo[i].Description = strings.TrimSpace(attr[i].CustomAttributes.Description)
-		cardInfo[i].LinkArrows = strings.Join(attr[i].CustomAttributes.LinkArrows, ",")
-
-		// cardInfo[i].ID = uint(attr[i].ProductID)
-		cardInfo[i].Level = attr[i].CustomAttributes.Level
-
-		temp := strings.Join(attr[i].CustomAttributes.MonsterType, ",")
-		cardInfo[i].MonsterType = strings.TrimSpace(temp)
-
-		cardInfo[i].Name = attr[i].ProductName
-		cardInfo[i].URLName = attr[i].ProductURLName
-		cardInfo[i].Number = attr[i].CustomAttributes.Number
-		cardInfo[i].Rarity = attr[i].RarityName
-		cardInfo[i].SetID = setMap[attr[i].SetName].ID                    // Set set infoforeign key
-		cardInfo[i].ProductLineID = setMap[attr[i].SetName].ProductLineID // Set product line foreign key
+		cardInfoList = cardInfos
 	}
-	return cardInfo, nil
+
+	return cardInfoList, nil
 }
 
-func makeCardImageIDList(attrList []CardAttrs, cardInfoList []tcm.CardInfo) ([]CardImageID, error) {
-	var cardImageIds []CardImageID
-	if len(attrList) == len(cardInfoList) {
-		cardImageIds = make([]CardImageID, len(attrList))
-		for i := 0; i < len(cardImageIds); i++ {
-			cardImageIds[i].OldID = uint(attrList[i].ProductID)
-			cardImageIds[i].NewID = uint(cardInfoList[i].ID)
+func makeCardImageIDList(attrList []CardAttrs, cardInfoList interface{}) ([]CardImageID, error) {
+	listVal := reflect.ValueOf(cardInfoList)
+	idList := make([]CardImageID, listVal.Len(), listVal.Len())
+	switch cardInfoList.(type) {
+	case []tcm.YuGiOhCardInfo:
+		vals := reflect.ValueOf(cardInfoList).Interface().([]tcm.YuGiOhCardInfo)
+		for i := 0; i < listVal.Len(); i++ {
+			idList[i].OldID = uint(attrList[i].ProductID)
+			idList[i].NewID = vals[i].ID
+			idList[i].ProductLineID = vals[i].ProductLineID
 		}
 	}
-	return cardImageIds, nil
+	return idList, nil
 }
 
 func parseDuplicateValue(errstr string) []string {
@@ -352,7 +371,7 @@ func parseDuplicateValue(errstr string) []string {
 	return []string{keys[0] + "-" + keys[1], keys[2], keys[3], keys[4]}
 }
 
-func removeEntry(list []tcm.CardInfo, number string, name string, rarity string, setID string) []tcm.CardInfo {
+func removeEntry(list []tcm.YuGiOhCardInfo, number string, name string, rarity string, setID string) []tcm.YuGiOhCardInfo {
 	length := len(list)
 	temp, _ := strconv.Atoi(setID)
 	sID := uint(temp)
@@ -369,7 +388,7 @@ func GetImages(wg *sync.WaitGroup, dataChan chan []CardImageID) {
 	defer wg.Done()
 
 	var response *http.Response
-	godotenv.Load("/home/gurbos/Projects/golang/tcgplayer_scraper/.env")
+	godotenv.Load()
 	imgDir := os.Getenv("IMG_DIR")
 	var remoteFileName string
 	var url string
@@ -379,14 +398,14 @@ func GetImages(wg *sync.WaitGroup, dataChan chan []CardImageID) {
 		if data != nil {
 			for i := 0; i < len(data); i++ {
 				remoteFileName = strconv.Itoa(int(data[i].OldID)) + "_200w.jpg" // Create remote filename from cardInfo.ProductID
-				url = TcgPlayerImageURL + "/" + remoteFileName                  // Build filename url from resource domain and remote filename
+				url = TcgpImageURL + "/" + remoteFileName                       // Build filename url from resource domain and remote filename
 				request, err := http.NewRequest(http.MethodGet, url, nil)       // Create http request object
 				if err != nil {
 					log.Fatal(err)
 				}
 
 				for true {
-					response, err = client.Do(request) // Make request and receive rescponse
+					response, err = client.Do(request) // Make request and receive response
 					if err != nil {
 						continue
 					}

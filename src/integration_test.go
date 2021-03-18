@@ -16,12 +16,10 @@ func TestIntegration(t *testing.T) {
 
 	// Create database tables
 	dataSource := GetDataSource()
-	Migrate(dataSource.DSNString(), &tcm.ProductLine{}, &tcm.SetInfo{}, &tcm.CardInfo{}) // Create database tables
+	Migrate(dataSource.DSNString(), &tcm.ProductLine{}, &tcm.SetInfo{}, &tcm.YuGiOhCardInfo{}) // Create database tables
 
 	dbconn := GetDBConnection(dataSource.DSNString(), logger.Silent)
 	err := DatabaseConnConfig(dbconn, 10, 10) // Configure the number of open database connections and idle connections
-
-	batchWriteSize := 500 // Size of database write operations
 
 	// Request metadata from the site
 	requestInfo := GetRequestPayload("yugioh", "Cards", "duelist-league-promo", 0)
@@ -43,7 +41,7 @@ func TestIntegration(t *testing.T) {
 	}
 
 	// Write per product line card sets to database
-	tx = WriteSetInfo(dbconn, responseData.Results[0].Aggregations, batchWriteSize)
+	tx = WriteSetInfo(dbconn, responseData.Results[0].Aggregations)
 	if tx.Error != nil {
 		t.Fatal("WriteSetInfo():", tx.Error)
 	}
@@ -68,7 +66,7 @@ func TestIntegration(t *testing.T) {
 
 	// Create group of goroutines to write data
 	for i := 0; i < numCPUThread; i++ {
-		go WriteCardInfo(&wg, dataChan, dbconn, setMap, batchWriteSize)
+		go WriteCardInfo(&wg, dataChan, dbconn, setMap)
 	}
 
 	// Request card info by card set
