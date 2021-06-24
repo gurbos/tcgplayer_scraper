@@ -14,5 +14,8 @@
 # IDE specific files
 src/.vscode/*
 
+# Binary files
+bin/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
